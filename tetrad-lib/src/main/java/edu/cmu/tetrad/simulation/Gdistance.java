@@ -39,7 +39,7 @@ public class Gdistance {
     }
 
     public List<Double> distances(Graph graph1, Graph graph2) {
-        //compared to GdistanceVic, Gdistance5 needs to calculate distances for non-cubic voxels.
+        // needs to calculate distances for non-cubic voxels.
         //dimensions along each dimension should be given as input: xdist, ydist, zdist
         //this impliments a less brute force approach, where edge comparisons are restricted
         //to edges that are in the "vicinity" of the original edge
