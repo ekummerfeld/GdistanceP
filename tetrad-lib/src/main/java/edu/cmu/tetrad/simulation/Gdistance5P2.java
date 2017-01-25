@@ -16,7 +16,7 @@ import java.util.concurrent.*;
  * the distance between two edges is calculated as the distance between their endpoints
  * the distance between edges calculated this way is a true distance
  * the distance between two graphs is not a true distance because it is not symmetric
- * the 5P version allows for non-cubic voxels, and parallelizes the most expensive loop
+ * this version allows for non-cubic voxels, and parallelizes the most expensive loop
  */
 public class Gdistance5P2 {
 

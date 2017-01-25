@@ -16,6 +16,9 @@ import java.util.List;
  */
 public class GdistanceApply {
     public static void main (String... args) {
+        double xdist = 2.4;
+        double ydist = 2.4;
+        double zdist = 2;
         long timestart = System.nanoTime();
         System.out.println("Loading first graph");
         Graph graph1 = GraphUtils.loadGraphTxt(new File("images_graph_10sub_pd40_group1.txt"));
@@ -39,8 +42,9 @@ public class GdistanceApply {
             System.out.println("Done loading location map. Elapsed time: " + (timegraph3 - timegraph2)/1000000000 + "s");
 
             System.out.println("Running Gdistance");
-            //Make this either Gdistance or GdistanceVic
-            List<Double> distance = GdistanceVic.distances(graph1,graph2,locationMap);
+
+            Gdistance gdist = new Gdistance(locationMap,xdist,ydist,zdist);
+            List<Double> distance = gdist.distances(graph1,graph2);
             System.out.println(distance);
             System.out.println("Done running Distance. Elapsed time: " + (System.nanoTime() - timegraph3)/1000000000 + "s");
             System.out.println("Total elapsed time: " + (System.nanoTime() - timestart)/1000000000 + "s");
