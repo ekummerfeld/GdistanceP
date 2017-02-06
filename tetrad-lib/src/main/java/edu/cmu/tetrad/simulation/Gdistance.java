@@ -5,6 +5,7 @@ import edu.cmu.tetrad.graph.*;
 import edu.cmu.tetrad.util.ForkJoinPoolInstance;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -29,6 +30,8 @@ public class Gdistance {
 
     private int chunksize = 2;
 
+    private int cores = ForkJoinPoolInstance.getInstance().getPool().getParallelism();
+
     //With the parallel version, it is better to make a constructor for central data like locationMap
     public Gdistance(DataSet locationMap, double xDist, double yDist, double zDist){
         this.locationMap = locationMap;
@@ -48,8 +51,11 @@ public class Gdistance {
         //System.out.println(locationMap);
         // Make *SURE* that the graph nodes are the same as the location nodes
         System.out.println("Synchronizing variables between graph1, graph2, and the locationMap");
+        long time1 = System.nanoTime();
         graph1 = GraphUtils.replaceNodes(graph1,locationMap.getVariables());
         graph2 = GraphUtils.replaceNodes(graph2,locationMap.getVariables());
+        long time2 = System.nanoTime();
+        System.out.println("Synchronizing time: " + (time2 - time1)/1000000000 + "s");
 
         //constructing vicinity is costy, so do it just once, OUTSIDE any loops
         //Using EK's Vicinity5
@@ -62,36 +68,70 @@ public class Gdistance {
 
         //This for loop should be parallelized in the future.
         //let the for loop do its thing, and create a new thread for each task inside of it.
-        int edgetracker=1;
+        //int edgetracker=1;
+
         //ForkJoinPool pool = ForkJoinPoolInstance.getInstance().getPool();
         List<Callable<Void>> todo = new ArrayList<Callable<Void>>();
         ExecutorService executorService = Executors.newCachedThreadPool();
-        for (final Edge edge1 : graph1.getEdges()) {
-            System.out.println("edge#"+edgetracker); edgetracker++;
-            // for each choice we will create a task that will run on a separate thread
 
+        List<Edge> taskEdges = new ArrayList<>();
+        //can change the times 3.0 part if it seems better to do so
+        int taskSize = (int) Math.ceil(graph1.getNumEdges()/(5.0*cores));
+        System.out.println(" edges1: " + graph1.getNumEdges() + " taskSize: " + taskSize);
+
+        for (final Edge edge1 : graph1.getEdges()) {
+            // for each choice we will create a task that will run on a separate thread
+            //System.out.println("edge#"+edgetracker);
+            //edgetracker++;
+
+            //Add edges to taskEdges until it reaches a certain size, then spin off a thread
+            taskEdges.add(edge1);
+
+            if (taskEdges.size() >= taskSize) {
+                //add the taskEdges to a new task, and then empty it
+                final List<Edge> runEdges = new ArrayList<>(taskEdges);
+                todo.add(new Callable(){
+                    public Void call() throws Exception {
+
+                        FindLeastDistanceTask FLDtask = new FindLeastDistanceTask(vicinity);
+                        FLDtask.compute(runEdges);
+                        return null;
+                    }
+                });
+
+                taskEdges.clear();
+            }
+
+        }
+        //add any leftover edge to a final task
+        if (!taskEdges.isEmpty()){
+            //add the taskEdges to a new task, and then empty it
+            final List<Edge> runEdges = new ArrayList<>(taskEdges);
             todo.add(new Callable(){
                 public Void call() throws Exception {
 
                     FindLeastDistanceTask FLDtask = new FindLeastDistanceTask(vicinity);
-                    FLDtask.compute(edge1);
+                    FLDtask.compute(runEdges);
                     return null;
                 }
             });
 
+            taskEdges.clear();
         }
+        //invoke all the things!
         try{
+            System.out.println("number of parallel tasks being invoked: " + todo.size());
             executorService.invokeAll(todo);
             executorService.shutdown();
         } catch (Exception e){
 
         }
+        System.out.println(leastList.size());
         return leastList;
     }
 
     //////+++++******* Method used in multithread task
     class FindLeastDistanceTask  {
-
         Vicinity vicinity;
 
         private FindLeastDistanceTask(final Vicinity vicinity) {
@@ -99,7 +139,8 @@ public class Gdistance {
 
         }
 
-        protected void compute(Edge edge1) {
+        protected void compute(List<Edge> edges) {
+            //System.out.println("running thread");
             /*
             try{
                 TimeUnit.SECONDS.sleep(3);
@@ -108,27 +149,31 @@ public class Gdistance {
             }
             */
 
-            //the variable "count" is used to initialize leastDistance to the first thisDistance
-            int count = 1;
-            double thisDistance;
-            double leastDistance = -1.0;
-            //the next for loop gets restricted to edges in the vicinity of edge1
-            List<Edge> vicEdges = vicinity.getVicinity(edge1,chunksize);
-            //System.out.println(vicEdges);
-            for (Edge edge2 : vicEdges) {
-                thisDistance = edgesDistance(edge1, edge2, locationMap,xDist,yDist,zDist);
-                //remember only the shortest distance seen
-                if (count ==1) {
-                    leastDistance = thisDistance;
-                } else {
-                    if (thisDistance < leastDistance) {
+            for (Edge edge1 : edges){
+                //the variable "count" is used to initialize leastDistance to the first thisDistance
+                int count = 1;
+                double thisDistance;
+                double leastDistance = -1.0;
+                //the next for loop gets restricted to edges in the vicinity of edge1
+                List<Edge> vicEdges = vicinity.getVicinity(edge1,chunksize);
+                //System.out.println(vicEdges);
+                for (Edge edge2 : vicEdges) {
+                    thisDistance = edgesDistance(edge1, edge2, locationMap,xDist,yDist,zDist);
+                    //remember only the shortest distance seen
+                    if (count ==1) {
                         leastDistance = thisDistance;
+                    } else {
+                        if (thisDistance < leastDistance) {
+                            leastDistance = thisDistance;
+                        }
                     }
+                    count++;
                 }
-                count++;
+                //add it to a list of the leastDistances
+                //System.out.println("does this happen?");
+                add(leastDistance);
+                //System.out.println(leastList);
             }
-            //add it to a list of the leastDistances
-            add(leastDistance);
 
         }
     }
